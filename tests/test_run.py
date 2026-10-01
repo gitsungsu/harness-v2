@@ -154,8 +154,18 @@ def set_cache(monkeypatch, tmp_path, five=0.1, seven=0.1, status="allowed", age=
     monkeypatch.setattr(run, "USAGE_CACHE", f)
 
 
+def test_usage_default_has_no_ratio_stop(monkeypatch, tmp_path):
+    monkeypatch.setattr(run, "USAGE_STRICT", False)
+    assert run.USAGE_STOP == 0
+    set_cache(monkeypatch, tmp_path, five=0.95, seven=0.99)
+    assert run.usage_exceeded() is False
+    set_cache(monkeypatch, tmp_path, status="rejected")
+    assert run.usage_exceeded() is True
+
+
 def test_usage_thresholds(monkeypatch, tmp_path):
     monkeypatch.setattr(run, "USAGE_STRICT", False)
+    monkeypatch.setattr(run, "USAGE_STOP", 0.8)
     set_cache(monkeypatch, tmp_path, five=0.5, seven=0.79)
     assert run.usage_exceeded() is False
     set_cache(monkeypatch, tmp_path, five=0.8)

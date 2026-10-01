@@ -75,7 +75,7 @@ effort = "high"        # low | medium | high | xhigh | max (codex는 ultra도)
 | `MAX_ITERATIONS` | 8 | 한 번 실행에서 돌 최대 사이클 |
 | `AGENT_TIMEOUT` / `CHECK_TIMEOUT` | 1800 / 600 | 에이전트 호출 / 검사 1회 상한(초) |
 | `AGENTS_CONFIG` | `src/harness/agents.toml` | 모델·effort 설정 파일 경로 (아래 참고) |
-| `USAGE_STOP` / `USAGE_MAX_AGE` / `USAGE_STRICT` | 0.8 / 1800 / 0 | 사용량 중단 비율 / 캐시 허용 나이(초) / 캐시 불량 시 중단 |
+| `USAGE_STOP` / `USAGE_MAX_AGE` / `USAGE_STRICT` | 0(꺼짐) / 1800 / 0 | 사용량 중단 비율(0이면 비율 기준 없음) / 캐시 허용 나이(초) / 캐시 불량 시 중단 |
 | `GIT_CHECKPOINT` | 1 | 에이전트마다 git 커밋 |
 | `HARNESS_DENY_PATHS`, `HARNESS_ALLOW_ROOT` | `OneDrive - `, – | 작업 디렉터리 거부 경로와 해제 |
 | `GENERATOR_EXTRA_TOOLS`, `EVALUATOR_EXTRA_TOOLS` | – | 추가로 허용할 도구 패턴 (쉼표 구분) |

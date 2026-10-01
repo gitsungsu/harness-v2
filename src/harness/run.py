@@ -35,7 +35,7 @@ CODEX_ONLY_EFFORTS = ("ultra",)
 DOCS_ONLY_ROLES = ("planner", "evaluator")
 MAX_DECISION_TRIES = 3  # 결정 합의 재시도 상한
 
-USAGE_STOP = float(os.environ.get("USAGE_STOP", "0.8"))  # 사용량이 이 비율(0~1) 이상이면 새 사이클 금지
+USAGE_STOP = float(os.environ.get("USAGE_STOP", "0"))  # 사용량이 이 비율(0~1) 이상이면 새 사이클 금지. 0이면 비율 기준 없음(limitStatus 거부는 항상 중단)
 USAGE_MAX_AGE = int(os.environ.get("USAGE_MAX_AGE", "1800"))  # 캐시가 이보다 오래되면 낡은 값으로 본다(초)
 USAGE_STRICT = os.environ.get("USAGE_STRICT") == "1"  # 1이면 캐시를 못 읽거나 낡았을 때 멈춘다
 USAGE_CACHE = Path.home() / ".claude" / "vscode-claude-status-cache.json"
@@ -157,8 +157,8 @@ def usage_exceeded() -> bool:
         log(f"경고: 사용량 캐시가 {age / 60:.0f}분 전 값입니다. VS Code가 닫혀 있으면 갱신되지 않습니다.")
         if USAGE_STRICT:
             return True
-    log(f"사용량: 5h {usage['utilization5h']:.0%}, 7d {usage['utilization7d']:.0%} (중단 기준 {USAGE_STOP:.0%})")
-    return used >= USAGE_STOP or usage.get("limitStatus", "allowed") != "allowed"
+    log(f"사용량: 5h {usage['utilization5h']:.0%}, 7d {usage['utilization7d']:.0%} (중단 기준 {f"{USAGE_STOP:.0%}" if USAGE_STOP else "없음"})")
+    return (USAGE_STOP > 0 and used >= USAGE_STOP) or usage.get("limitStatus", "allowed") != "allowed"
 
 
 # ---------------------------------------------------------------- 사이클 카운터 · 마커 파일
