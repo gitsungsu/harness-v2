@@ -291,13 +291,20 @@ def test_checkpoint_disabled_or_no_repo(tmp_path, monkeypatch, root):
 
 # ---------------------------------------------------------------- 외부 검증과 사이클
 def test_run_checks_writes_checks_md(root, monkeypatch):
-    assert run.run_checks(root, 1) is None  # pyproject 없으면 건너뜀
+    assert run.run_checks(root, 1) is None  # pyproject·package.json 없으면 건너뜀
     write(root / "pyproject.toml", "")
     monkeypatch.setattr(run, "CHECK_COMMANDS", [("ok", ["python", "-c", "print('good')"]),
                                                 ("bad", ["python", "-c", "import sys; sys.exit(2)"])])
     assert run.run_checks(root, 4, ["src/x.py"]) is False
     text = (root / "docs" / "CHECKS.md").read_text(encoding="utf-8")
     assert "ok: PASS" in text and "bad: FAIL (exit 2)" in text and "`src/x.py`" in text and "사이클: 4" in text
+
+
+def test_run_checks_uses_npm_for_package_json(root, monkeypatch):
+    write(root / "package.json", "{}")
+    monkeypatch.setattr(run, "NPM_CHECK_COMMANDS", [("npm test", ["python", "-c", "print('ok')"])])
+    assert run.run_checks(root, 2) is True
+    assert "npm test: PASS" in (root / "docs" / "CHECKS.md").read_text(encoding="utf-8")
 
 
 def stub_cycle(monkeypatch, calls, planner_effect=None, evaluator_effect=None, checks=True):

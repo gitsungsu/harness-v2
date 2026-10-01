@@ -56,6 +56,9 @@ EVALUATOR_TOOLS = ["Read", "Glob", "Grep", "Edit(docs/**)",
 # 사이클마다 run.py가 직접 돌리는 외부 검증
 CHECK_COMMANDS = [("pytest", ["uv", "run", "pytest", "-q"]),
                   ("ruff", ["uv", "run", "ruff", "check", "src", "tests"])]
+# package.json 프로젝트용. Windows의 npm은 npm.cmd라서 전체 경로로 풀어 준다
+NPM = shutil.which("npm") or "npm"
+NPM_CHECK_COMMANDS = [("npm test", [NPM, "test"]), ("npm build", [NPM, "run", "build"])]
 # touch 범위 검사에서 늘 허용하는 경로 (docs/는 에이전트 문서, lock/pyproject는 uv add 결과)
 ALWAYS_ALLOWED = ("docs/", "uv.lock", "pyproject.toml")
 IGNORED_PARTS = ("__pycache__", ".pytest_cache", ".ruff_cache", ".venv")
@@ -373,12 +376,16 @@ def touch_violations(changed: set[str], touch: list[str]) -> list[str]:
 
 # ---------------------------------------------------------------- 외부 검증 (CHECKS.md)
 def run_checks(root: Path, cycle: int, violations: list[str] | None = None) -> bool | None:
-    """pytest·ruff를 run.py가 직접 돌려 docs/CHECKS.md에 쓴다. 에이전트 보고가 아니라 종료코드다.
-    Python 프로젝트가 아니면 None, 전부 통과면 True."""
-    if not (root / "pyproject.toml").exists():
+    """pytest·ruff(Python) 또는 npm test·build(package.json)를 run.py가 직접 돌려 docs/CHECKS.md에 쓴다.
+    에이전트 보고가 아니라 종료코드다. 둘 다 아니면 None, 전부 통과면 True."""
+    if (root / "pyproject.toml").exists():
+        commands = CHECK_COMMANDS
+    elif (root / "package.json").exists():
+        commands = NPM_CHECK_COMMANDS
+    else:
         return None
     rows, tails, ok = [], [], True
-    for name, cmd in CHECK_COMMANDS:
+    for name, cmd in commands:
         try:
             r = subprocess.run(cmd, cwd=root, capture_output=True, text=True, encoding="utf-8",
                                timeout=CHECK_TIMEOUT)
@@ -587,6 +594,9 @@ def main(root: Path) -> int:
 
 
 def cli() -> None:
+    # Windows 콘솔(cp949)이나 파일로 리다이렉트된 stdout은 codex 출력의 '—' 같은 문자에서 UnicodeEncodeError로 죽는다
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     sys.exit(main(parse_args()))
 
 
