@@ -68,6 +68,10 @@ effort = "high"        # low | medium | high | xhigh | max (codex는 ultra도)
 - **네트워크**: `workspace-write`에서는 네트워크가 막힐 수 있어, codex가 `uv run`으로 새 의존성을 받아야 하면 실패할 수 있습니다. evaluator는 보통 이미 설치된 환경에서 테스트만 돌리므로 영향이 작습니다.
 - **로그**: codex의 stdout은 진행 로그라서 마지막 메시지(`-o`)만 출력하고, `runs.jsonl`에는 `backend`가 함께 기록됩니다.
 
+## 토큰 사용량 기록
+
+`docs/runs.jsonl`의 호출마다 토큰과 비용이 남습니다. claude는 `input_tokens`·`cache_write_tokens`·`cache_read_tokens`·`output_tokens`·`cost_usd`(API 환산, 구독 차감액과는 다름), codex는 `total_tokens`(출력 끝의 `tokens used`)입니다. 역할별 합은 `uv run python -m harness.report <프로젝트 디렉터리>`로 봅니다.
+
 ## 환경변수
 
 | 이름 | 기본값 | 의미 |
@@ -76,6 +80,10 @@ effort = "high"        # low | medium | high | xhigh | max (codex는 ultra도)
 | `AGENT_TIMEOUT` / `CHECK_TIMEOUT` | 1800 / 600 | 에이전트 호출 / 검사 1회 상한(초) |
 | `AGENTS_CONFIG` | `src/harness/agents.toml` | 모델·effort 설정 파일 경로 (아래 참고) |
 | `USAGE_STOP` / `USAGE_MAX_AGE` / `USAGE_STRICT` | 0(꺼짐) / 1800 / 0 | 사용량 중단 비율(0이면 비율 기준 없음) / 캐시 허용 나이(초) / 캐시 불량 시 중단 |
+| `HARNESS_ISOLATE` | 1 | claude 호출에서 사용자 전역 설정·MCP·스킬·미사용 내장 도구를 뺀다 (`--tools`, `--strict-mcp-config`, `--disable-slash-commands`, `--setting-sources project`). 세션당 고정 입력이 약 4.4만 → 1만 토큰으로 준다(실측). `Edit(docs/**)` 같은 허용 패턴은 그대로 적용 |
+| `DOC_DIET` | 1 | 사이클 시작 전에 TASKS의 완료 항목(최근 2개 제외)을 한 줄로 줄이고, PLAN의 `Tn REVIEW 메모`(최근 3개 제외)와 JOURNAL(마지막 40줄 제외)을 `docs/archive/`로 옮긴다. 원문은 archive에 남는다 |
+| `SKIP_PLANNER_ON_FAIL` | 1 | 1이면 직전 평가가 FAIL일 때 Planner 없이 `▶` TASK를 다시 열고(`재작업(run.py)` 줄 추가) Generator로 간다. 같은 TASK를 2번 되열어도 FAIL이면 Planner가 다시 판단한다. 결정 합의 대기 중이면 생략하지 않는다 |
+| `AGENT_MAX_BUDGET_USD` | – | claude 1회 호출의 비용 상한(API 환산 달러). 폭주 방지용 |
 | `GIT_CHECKPOINT` | 1 | 에이전트마다 git 커밋 |
 | `HARNESS_DENY_PATHS`, `HARNESS_ALLOW_ROOT` | `OneDrive - `, – | 작업 디렉터리 거부 경로와 해제 |
 | `GENERATOR_EXTRA_TOOLS`, `EVALUATOR_EXTRA_TOOLS` | – | 추가로 허용할 도구 패턴 (쉼표 구분) |

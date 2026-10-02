@@ -18,6 +18,8 @@ import tomllib
 from datetime import datetime
 from pathlib import Path
 
+from harness.slim import ITEM_RE, _split_items, slim_docs
+
 PROMPTS = Path(__file__).resolve().parent / "prompts"  # 프롬프트는 패키지 안에 고정
 
 
@@ -39,6 +41,12 @@ USAGE_STOP = float(os.environ.get("USAGE_STOP", "0"))  # 사용량이 이 비율
 USAGE_MAX_AGE = int(os.environ.get("USAGE_MAX_AGE", "1800"))  # 캐시가 이보다 오래되면 낡은 값으로 본다(초)
 USAGE_STRICT = os.environ.get("USAGE_STRICT") == "1"  # 1이면 캐시를 못 읽거나 낡았을 때 멈춘다
 USAGE_CACHE = Path.home() / ".claude" / "vscode-claude-status-cache.json"
+
+# 토큰 절감 스위치. 기본은 모두 켬. 끄려면 0.
+ISOLATE_CLAUDE = os.environ.get("HARNESS_ISOLATE", "1") == "1"  # claude 호출에서 사용자 전역 설정·MCP·스킬·미사용 내장 도구를 빼 세션당 고정 입력을 줄인다
+DOC_DIET = os.environ.get("DOC_DIET", "1") == "1"  # 사이클 시작 전에 TASKS·PLAN·JOURNAL의 지난 상세를 docs/archive/로 옮긴다
+SKIP_PLANNER_ON_FAIL = os.environ.get("SKIP_PLANNER_ON_FAIL", "1") == "1"  # 직전 평가가 FAIL이면 Planner 없이 같은 TASK를 다시 연다
+AGENT_MAX_BUDGET_USD = os.environ.get("AGENT_MAX_BUDGET_USD")  # claude 1회 호출의 비용 상한(API 환산, 달러). 없으면 제한 없음
 
 GIT_CHECKPOINT = os.environ.get("GIT_CHECKPOINT", "1") == "1"  # 에이전트마다 git 커밋
 # 사내 데이터가 든 폴더에서 돌리면 파일 내용이 API로 나간다. 경로에 이 문자열이 있으면 거부(쉼표 구분).
@@ -63,6 +71,7 @@ NPM_CHECK_COMMANDS = [("npm test", [NPM, "test"]), ("npm build", [NPM, "run", "b
 ALWAYS_ALLOWED = ("docs/", "uv.lock", "pyproject.toml")
 IGNORED_PARTS = ("__pycache__", ".pytest_cache", ".ruff_cache", ".venv")
 
+TASK_HEAD_RE = re.compile(r"^(?:▶\s*)?\[[ xX]\]")  # TASKS.md 항목 머리: "[ ] T1." 또는 "▶ [ ] T1."
 LABEL_RE = re.compile(r"^선택:\s*([A-Z])(?![A-Za-z0-9])")  # 합의 라벨은 대문자 한 글자
 _log_file: Path | None = None
 
@@ -217,10 +226,33 @@ def extra_tools(env_name: str) -> list[str]:
     return [t.strip() for t in os.environ.get(env_name, "").split(",") if t.strip()]
 
 
+def builtin_tools(allowed_tools: list[str]) -> list[str]:
+    """허용 패턴("Bash(uv run *)", "Edit(docs/**)")에서 내장 도구 이름만 순서대로 뽑는다."""
+    return list(dict.fromkeys(t.split("(", 1)[0] for t in allowed_tools))
+
+
 def claude_command(allowed_tools: list[str], accept_edits: bool, model: str | None, effort: str | None) -> list[str]:
     cmd = ["claude", "-p", "--output-format", "json", "--allowedTools", *allowed_tools,
            "--permission-mode", "acceptEdits" if accept_edits else "default"]  # 사용자 auto 모드를 피한다
+    if ISOLATE_CLAUDE:
+        # --tools로 안 쓰는 내장 도구의 스키마를 빼는 것이 가장 크다(세션당 고정 입력 약 4.4만 → 1만 토큰, 실측).
+        # 허용 패턴(--allowedTools)은 그대로라서 Edit(docs/**) 같은 범위 제한은 유지된다.
+        cmd += ["--tools", ",".join(builtin_tools(allowed_tools)), "--strict-mcp-config",
+                "--disable-slash-commands", "--setting-sources", "project"]
+    if AGENT_MAX_BUDGET_USD:
+        cmd += ["--max-budget-usd", AGENT_MAX_BUDGET_USD]
     return cmd + model_args({"model": model, "effort": effort})
+
+
+def usage_fields(backend: str, payload: dict, text: str) -> dict:
+    """호출 1회의 토큰·비용. claude는 json 응답의 usage, codex는 출력 끝의 'tokens used'."""
+    if backend == "claude":
+        u = payload.get("usage") or {}
+        return {"input_tokens": u.get("input_tokens"), "cache_write_tokens": u.get("cache_creation_input_tokens"),
+                "cache_read_tokens": u.get("cache_read_input_tokens"), "output_tokens": u.get("output_tokens"),
+                "cost_usd": payload.get("total_cost_usd")}
+    m = re.findall(r"tokens used\s*([\d,]+)", text)
+    return {"total_tokens": int(m[-1].replace(",", ""))} if m else {}
 
 
 def codex_command(model: str | None, effort: str | None, out_file: Path) -> list[str]:
@@ -293,7 +325,7 @@ def run_agent(root: Path, name: str, prompt_file: str, allowed_tools: list[str],
         print(result.stderr.strip()[-2000:], file=sys.stderr, flush=True)
     failed = result.returncode != 0 or bool(payload.get("is_error"))
     record_run(root, **meta, seconds=seconds, exit=result.returncode, is_error=bool(payload.get("is_error")),
-               turns=payload.get("num_turns"))
+               turns=payload.get("num_turns"), **usage_fields(backend, payload, f"{result.stdout}\n{result.stderr}"))
     log(f"--- {name} 종료 (exit={result.returncode}, {seconds}초) ---")
     if failed:
         log(f"{name} 실패로 중단합니다.")
@@ -333,7 +365,8 @@ def current_task_touch(tasks_text: str) -> list[str] | None:
     """TASKS.md에서 이번 작업(▶ 표시, 없으면 첫 미완료)의 touch 경로 목록. 못 찾으면 None."""
     items: list[list[str]] = []
     for line in tasks_text.splitlines():
-        if line.startswith("- "):
+        # "- [ ] ..."뿐 아니라 Planner가 실제로 쓰는 "[ ] T1. ..." · "▶ [ ] T1. ..." 형식도 항목 머리로 본다
+        if line.startswith("- ") or TASK_HEAD_RE.match(line):
             items.append([line])
         elif items:
             items[-1].append(line)
@@ -342,8 +375,9 @@ def current_task_touch(tasks_text: str) -> list[str] | None:
     if chosen is None:
         return None
     paths: list[str] = []
-    for line in chosen:
-        if "touch" in line:
+    for k, line in enumerate(chosen):
+        # "touch:"로 시작하는 줄(또는 머리 줄의 touch:)만 본다. 메모 문장 속 'touch'와 코드 식별자를 경로로 잡지 않는다
+        if re.match(r"^\s*(?:-\s*)?touch\s*[:：]", line) or (k == 0 and "touch:" in line):
             paths += re.findall(r"`([^`]+)`", line.split("touch", 1)[1])
     return paths or None
 
@@ -496,17 +530,56 @@ def archive_resolved(root: Path) -> None:
             log(f"확정된 결정을 보관: {topic.name}")
 
 
+# ---------------------------------------------------------------- Planner 생략 (FAIL 재작업)
+REWORK_MARK = "재작업(run.py)"
+MAX_SKIPPED_REWORKS = 2  # 같은 TASK를 이만큼 되열었는데도 FAIL이면 Planner가 다시 판단한다 (BLOCKED·분할 대비)
+
+
+def reopen_failed_task(root: Path) -> str | None:
+    """직전 평가가 FAIL이고 ▶ 항목이 [x]이면 [ ]로 되열고 재작업 줄을 붙인다. 되열었으면 TASK ID, 아니면 None.
+    결정 합의가 대기 중이거나 같은 TASK를 이미 여러 번 되열었으면 Planner에게 맡긴다."""
+    docs = root / "docs"
+    tasks, review = docs / "TASKS.md", docs / "REVIEW.md"
+    if not tasks.exists() or not review.exists():
+        return None
+    m = re.search(r"^(PASS|조건부 PASS|FAIL)(\s*—.*)?$", review.read_text(encoding="utf-8"), re.M)
+    if not m or m.group(1) != "FAIL":
+        return None
+    if any(docs.glob("decisions/*.md")):
+        return None  # 합의 대기 중인 결정이 있다 — Planner가 반영해야 한다
+    lines = tasks.read_text(encoding="utf-8").splitlines()
+    for a, b in _split_items(lines):
+        head = ITEM_RE.match(lines[a])
+        if "▶" in lines[a] and head.group(3) in "xX":
+            if sum(REWORK_MARK in l for l in lines[a:b]) >= MAX_SKIPPED_REWORKS:
+                return None
+            lines[a] = lines[a].replace("[x]", "[ ]", 1).replace("[X]", "[ ]", 1)
+            lines.insert(b, f"  - {REWORK_MARK}: docs/REVIEW.md의 FAIL 지적을 먼저 해소한다. (Planner 생략)")
+            tasks.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="")
+            return head.group(4).rstrip(".")
+    return None
+
+
 # ---------------------------------------------------------------- 사이클
 def run_cycle(root: Path, iteration: int, agents: dict[str, dict[str, str]]) -> str:
     """한 사이클. 'ok' | 'done' | 'halt' 를 돌려준다. 에이전트 실패는 AgentFailed."""
     docs = root / "docs"
     clear_done_at_cycle_start(root)
 
-    before = changed_files(root) if in_git_repo(root) else None
-    run_agent(root, "planner", "planner.md", PLANNER_TOOLS, iteration, **agents["planner"])
-    check_docs_only(root, "planner", agents["planner"], before)
-    archive_resolved(root)
-    checkpoint(root, f"harness: cycle {iteration} planner")
+    if DOC_DIET:
+        moved = slim_docs(root)
+        if any(moved.values()):
+            log(f"문서 정리: TASKS {moved['tasks']}항목·PLAN {moved['plan']}줄·JOURNAL {moved['journal']}줄을 docs/archive/로 옮김")
+    reopened = reopen_failed_task(root) if SKIP_PLANNER_ON_FAIL and iteration > 1 else None
+    if reopened:
+        log(f"Planner 생략: 직전 평가가 FAIL이라 {reopened}을(를) 다시 엽니다 (SKIP_PLANNER_ON_FAIL=1)")
+        checkpoint(root, f"harness: cycle {iteration} planner skipped ({reopened} rework)")
+    else:
+        before = changed_files(root) if in_git_repo(root) else None
+        run_agent(root, "planner", "planner.md", PLANNER_TOOLS, iteration, **agents["planner"])
+        check_docs_only(root, "planner", agents["planner"], before)
+        archive_resolved(root)
+        checkpoint(root, f"harness: cycle {iteration} planner")
 
     if (docs / "DONE").exists():
         ok = run_checks(root, iteration)  # DONE은 LLM 선언이 아니라 외부 검증이 통과해야 인정

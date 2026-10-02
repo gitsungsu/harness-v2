@@ -228,7 +228,7 @@ def test_run_agent_passes_prompt_by_stdin_and_records(root, monkeypatch):
     assert all("당신의 임무" not in a for a in seen["cmd"])  # 프롬프트는 argv에 없다
     assert seen["timeout"] == run.AGENT_TIMEOUT
     rec = json.loads((root / "docs" / "runs.jsonl").read_text(encoding="utf-8").splitlines()[0])
-    assert rec["agent"] == "generator" and rec["effort"] == "medium" and "cost_usd" not in rec and rec["turns"] == 3 and len(rec["prompt_sha"]) == 12
+    assert rec["agent"] == "generator" and rec["effort"] == "medium" and rec["cost_usd"] is None and rec["turns"] == 3 and len(rec["prompt_sha"]) == 12
 
 
 @pytest.mark.parametrize("proc, code", [
@@ -547,3 +547,137 @@ def test_docs_only_check_for_codex_roles(repo):
     run.check_docs_only(repo, "evaluator", {"backend": "claude"}, before)  # claude는 도구 패턴이 막으므로 검사 안 함
     run.check_docs_only(repo, "generator", codex, before)  # generator는 코드 수정이 정상
     run.check_docs_only(repo, "evaluator", codex, None)  # git이 아니면 경고만
+
+
+# ---------------------------------------------------------------- 토큰 절감: 환경 격리 · 사용량 기록
+def test_builtin_tools_strips_patterns_keeping_order():
+    assert run.builtin_tools(run.GENERATOR_TOOLS) == ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
+    assert run.builtin_tools(run.PLANNER_TOOLS) == ["Read", "Glob", "Grep", "Edit"]
+
+
+def test_claude_command_isolates_environment_but_keeps_permission_patterns(monkeypatch):
+    monkeypatch.setattr(run, "ISOLATE_CLAUDE", True)
+    monkeypatch.setattr(run, "AGENT_MAX_BUDGET_USD", None)
+    cmd = run.claude_command(run.PLANNER_TOOLS, False, None, None)
+    assert cmd[cmd.index("--tools") + 1] == "Read,Glob,Grep,Edit"
+    assert "Edit(docs/**)" in cmd  # 쓰기 범위 제한은 그대로
+    assert "--strict-mcp-config" in cmd and "--disable-slash-commands" in cmd
+    assert cmd[cmd.index("--setting-sources") + 1] == "project"
+    assert "--max-budget-usd" not in cmd
+    monkeypatch.setattr(run, "ISOLATE_CLAUDE", False)
+    assert "--tools" not in run.claude_command(run.PLANNER_TOOLS, False, None, None)
+    monkeypatch.setattr(run, "AGENT_MAX_BUDGET_USD", "3")
+    assert run.claude_command(["Read"], False, None, None)[-2:] == ["--max-budget-usd", "3"]
+
+
+def test_usage_fields_claude_and_codex():
+    payload = {"usage": {"input_tokens": 9, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 200,
+                         "output_tokens": 7}, "total_cost_usd": 0.25}
+    assert run.usage_fields("claude", payload, "") == {
+        "input_tokens": 9, "cache_write_tokens": 100, "cache_read_tokens": 200, "output_tokens": 7, "cost_usd": 0.25}
+    assert run.usage_fields("codex", {}, "진행 로그\ntokens used\n86,701\n") == {"total_tokens": 86701}
+    assert run.usage_fields("codex", {}, "토큰 줄 없음") == {}
+
+
+def test_run_agent_records_token_usage(root, monkeypatch):
+    out = json.dumps({"result": "ok", "num_turns": 2, "total_cost_usd": 0.5,
+                      "usage": {"input_tokens": 3, "cache_creation_input_tokens": 40,
+                                "cache_read_input_tokens": 50, "output_tokens": 6}})
+    monkeypatch.setattr(run.subprocess, "run", lambda cmd, **kw: FakeProc(out))
+    run.run_agent(root, "planner", "planner.md", ["Read"], 1)
+    rec = json.loads((root / "docs" / "runs.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert rec["cache_read_tokens"] == 50 and rec["cache_write_tokens"] == 40 and rec["cost_usd"] == 0.5
+
+
+# ---------------------------------------------------------------- 토큰 절감: FAIL 재작업 시 Planner 생략
+TASKS_FAIL = "# TASKS\n\n▶ [x] T8. 배당 (FAIL 8/12)\n  - acceptance: x\n  - touch: `a.ts`\n\n[ ] T9. 경제\n  - touch: `b.ts`\n"
+
+
+def set_review(root, result):
+    write(root / "docs" / "REVIEW.md", f"## 결과\n\n{result}\n")
+
+
+def reclose(root):
+    f = root / "docs" / "TASKS.md"
+    write(f, f.read_text(encoding="utf-8").replace("[ ] T8.", "[x] T8."))
+
+
+def test_reopen_failed_task_reopens_arrow_item_and_adds_note(root):
+    write(root / "docs" / "TASKS.md", TASKS_FAIL)
+    set_review(root, "FAIL — 8/12")
+    assert run.reopen_failed_task(root) == "T8"
+    text = (root / "docs" / "TASKS.md").read_text(encoding="utf-8")
+    assert "▶ [ ] T8." in text and "[ ] T9." in text and text.count(run.REWORK_MARK) == 1
+
+
+def test_reopen_failed_task_leaves_planner_when_not_applicable(root):
+    write(root / "docs" / "TASKS.md", TASKS_FAIL)
+    set_review(root, "PASS — 11/12")
+    assert run.reopen_failed_task(root) is None  # PASS면 Planner가 다음 항목을 고른다
+    set_review(root, "조건부 PASS — 9/12")
+    assert run.reopen_failed_task(root) is None
+    set_review(root, "FAIL — 8/12")
+    write(root / "docs" / "decisions" / "font.md", "후보 A, B")
+    assert run.reopen_failed_task(root) is None  # 합의 대기 중
+    (root / "docs" / "decisions" / "font.md").unlink()
+    assert run.reopen_failed_task(root) == "T8"
+    reclose(root)
+    assert run.reopen_failed_task(root) == "T8"  # 두 번째까지는 되연다
+    reclose(root)
+    assert run.reopen_failed_task(root) is None  # 상한 도달 — Planner가 분할·BLOCKED를 판단한다
+
+
+def test_run_cycle_skips_planner_after_fail_only_when_enabled(root, monkeypatch):
+    write(root / "docs" / "TASKS.md", TASKS_FAIL)
+    set_review(root, "FAIL — 8/12")
+    ok = lambda r: review(r, 3, "PASS — 10/12")
+    calls = []
+    stub_cycle(monkeypatch, calls, evaluator_effect=ok)
+    monkeypatch.setattr(run, "SKIP_PLANNER_ON_FAIL", False)
+    assert run.run_cycle(root, 2, AGENTS) == "ok" and calls == ["planner", "generator", "evaluator"]
+    write(root / "docs" / "TASKS.md", TASKS_FAIL)
+    set_review(root, "FAIL — 8/12")
+    calls.clear()
+    monkeypatch.setattr(run, "SKIP_PLANNER_ON_FAIL", True)
+    assert run.run_cycle(root, 3, AGENTS) == "ok" and calls == ["generator", "evaluator"]
+    assert "▶ [ ] T8." in (root / "docs" / "TASKS.md").read_text(encoding="utf-8")
+    calls.clear()
+    set_review(root, "PASS — 11/12")
+    assert run.run_cycle(root, 4, AGENTS) == "ok" and calls == ["planner", "generator", "evaluator"]  # PASS 뒤엔 Planner
+
+
+def test_run_cycle_never_skips_planner_on_first_cycle(root, monkeypatch):
+    write(root / "docs" / "TASKS.md", TASKS_FAIL)
+    set_review(root, "FAIL — 8/12")
+    calls = []
+    stub_cycle(monkeypatch, calls, evaluator_effect=lambda r: review(r, 3, "PASS — 10/12"))
+    monkeypatch.setattr(run, "SKIP_PLANNER_ON_FAIL", True)
+    run.run_cycle(root, 1, AGENTS)
+    assert calls[0] == "planner"
+
+
+def test_run_cycle_slims_docs_before_planner(root, monkeypatch):
+    seen = []
+    monkeypatch.setattr(run, "DOC_DIET", True)
+    monkeypatch.setattr(run, "slim_docs", lambda r: seen.append("slim") or {"tasks": 2, "plan": 0, "journal": 0})
+    stub_cycle(monkeypatch, seen, evaluator_effect=lambda r: review(r, 3, "PASS — 10/12"))
+    run.run_cycle(root, 1, AGENTS)
+    assert seen[:2] == ["slim", "planner"]
+    seen.clear()
+    monkeypatch.setattr(run, "DOC_DIET", False)
+    run.run_cycle(root, 2, AGENTS)
+    assert "slim" not in seen
+
+
+def test_current_task_touch_reads_planner_bracket_format():
+    tasks = ("# TASKS\n\n[x] T1. 끝남\n  - touch: `a.ts`\n\n▶ [ ] T2. 현재\n  - acceptance: x\n  - touch: `src/b.ts`, `tests/b.test.ts`\n\n"
+             "[ ] T3. 다음\n  - touch: `c.ts`\n")
+    assert run.current_task_touch(tasks) == ["src/b.ts", "tests/b.test.ts"]
+    assert run.current_task_touch(tasks.replace("▶ ", "")) == ["src/b.ts", "tests/b.test.ts"]  # 표시 없으면 첫 미완료
+    assert run.current_task_touch("[x] T1. 끝남\n  - touch: `a.ts`\n") is None
+
+
+def test_current_task_touch_ignores_touch_word_in_memo_lines():
+    tasks = ("▶ [ ] T2. 현재\n  - touch: `src/b.ts`\n  - T1 REVIEW 메모: touch 밖 파일 `x.png`와 `runFor`를 확인\n"
+             "  - acceptance: `npm test`\n")
+    assert run.current_task_touch(tasks) == ["src/b.ts"]

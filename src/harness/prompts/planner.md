@@ -10,7 +10,9 @@
 * `docs/PLAN.md` (부재 시 새로 작성)
 * `docs/TASKS.md` (부재 시 새로 작성)
 * `docs/REVIEW.md` (직전 사이클의 평가 결과; 존재 시 반드시 반영)
-* `docs/JOURNAL.md` (최근 기록을 통한 진행 흐름 파악용)
+* `docs/JOURNAL.md` (최근 기록을 통한 진행 흐름 파악용. 파일이 길면 Read의 offset으로 마지막 40줄만 읽습니다)
+
+완료된 TASK는 TASKS.md에 한 줄 요약만 남고 상세·메모 이력은 `docs/archive/`에 있습니다. archive는 읽지 않습니다. 새 메모는 이어받을 TASK 항목에만 적습니다.
 * `docs/CHECKS.md` (run.py가 직접 돌린 pytest·ruff·touch 위반 결과; 존재 시 반영)
 
 ---
