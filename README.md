@@ -21,7 +21,7 @@ uv run python -m harness.bench                         # 평가셋 케이스 목
 | 2 | 완료 판정을 전부 LLM이 함 | Generator 직후 `run.py`가 pytest·ruff를 직접 실행해 `docs/CHECKS.md`에 기록. Planner가 `DONE`을 만들어도 검사가 실패하면 `DONE`을 지우고 사이클을 이어감 | `run_checks`, `run_cycle` |
 | 3 | git 체크포인트·diff 없음 | 에이전트마다 해당 프로젝트 폴더 변경만 커밋(`harness: cycle N planner/generator/evaluator`). Generator 변경 파일을 TASKS의 `▶` 항목 `touch`와 대조해 위반 목록을 `CHECKS.md`에 기록. 프롬프트 해시는 `runs.jsonl`에 기록. 끄려면 `GIT_CHECKPOINT=0` | `checkpoint`, `touch_violations` |
 | 4 | 하네스 import가 곧 실행이라 테스트 불가 | 인자 파싱·실행은 `main()`/`cli()` 안으로. 함수가 `root`를 인자로 받음. 테스트 다수 | `run.py`, `tests/` |
-| 5 | 사용량 가드가 조용히 꺼짐 | 캐시를 못 읽거나 30분 넘게 낡았으면 경고 로그. `USAGE_STRICT=1`이면 멈춤. `limitStatus`가 `allowed`가 아니어도 멈춤 | `usage_exceeded` |
+| 5 | 사용량 가드가 조용히 꺼짐 | 캐시를 못 읽거나 30분 넘게 낡았으면 경고 로그. `USAGE_STRICT=1`이면 멈춤. `limitStatus`가 `rejected` 등 차단 상태면 멈춤(`allowed_warning`은 통과) | `usage_exceeded` |
 | 6 | 반복 50, timeout 없음, REVIEW 갱신 미확인 | `MAX_ITERATIONS` 기본 8, 에이전트 호출 `AGENT_TIMEOUT`(기본 1800초), pytest/ruff `CHECK_TIMEOUT`(600초). 이번 사이클에 `REVIEW.md`가 갱신되지 않으면 중단 | `run_agent`, `run_cycle` |
 | 7 | 관측 부족 | `docs/harness.log`(콘솔 로그 사본), `docs/runs.jsonl`(에이전트 호출마다 backend·모델·effort·소요 시간·턴 수·프롬프트 해시). 비용은 기록하지 않음 | `record_run` |
 | 8 | `[IS08601]` 오타 | `{ISO8601}`로 수정 | `evaluator.md` |

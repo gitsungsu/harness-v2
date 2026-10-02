@@ -159,6 +159,8 @@ def test_usage_default_has_no_ratio_stop(monkeypatch, tmp_path):
     assert run.USAGE_STOP == 0
     set_cache(monkeypatch, tmp_path, five=0.95, seven=0.99)
     assert run.usage_exceeded() is False
+    set_cache(monkeypatch, tmp_path, status="allowed_warning")  # API의 경고 단계(약 80%)는 막지 않는다
+    assert run.usage_exceeded() is False
     set_cache(monkeypatch, tmp_path, status="rejected")
     assert run.usage_exceeded() is True
 

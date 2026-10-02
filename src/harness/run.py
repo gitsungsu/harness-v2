@@ -158,7 +158,7 @@ def usage_exceeded() -> bool:
         if USAGE_STRICT:
             return True
     log(f"사용량: 5h {usage['utilization5h']:.0%}, 7d {usage['utilization7d']:.0%} (중단 기준 {f"{USAGE_STOP:.0%}" if USAGE_STOP else "없음"})")
-    return (USAGE_STOP > 0 and used >= USAGE_STOP) or usage.get("limitStatus", "allowed") != "allowed"
+    return (USAGE_STOP > 0 and used >= USAGE_STOP) or usage.get("limitStatus", "allowed") not in ("allowed", "allowed_warning")
 
 
 # ---------------------------------------------------------------- 사이클 카운터 · 마커 파일
