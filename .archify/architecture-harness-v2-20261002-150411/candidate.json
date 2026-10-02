@@ -1,0 +1,474 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "harness-v2 사이클 구조",
+    "output": "harness-v2.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/gitsungsu/harness-v2.git",
+      "provider": "github",
+      "revision": "387c7eddc92d64032b5e3a3cac9e678e182d4ded"
+    }
+  },
+  "components": [
+    {
+      "id": "cfg",
+      "type": "database",
+      "label": "agents.toml",
+      "sublabel": "역할별 모델·effort",
+      "pos": [
+        40,
+        60
+      ],
+      "size": [
+        150,
+        56
+      ],
+      "sources": [
+        {
+          "path": "src/harness/agents.toml",
+          "line": 13,
+          "end_line": 29
+        },
+        {
+          "path": "src/harness/run.py",
+          "line": 86,
+          "end_line": 114
+        }
+      ]
+    },
+    {
+      "id": "orch",
+      "type": "backend",
+      "label": "run.py",
+      "sublabel": "사이클 루프",
+      "tag": "MAX_ITERATIONS",
+      "pos": [
+        40,
+        200
+      ],
+      "size": [
+        150,
+        70
+      ],
+      "sources": [
+        {
+          "path": "src/harness/run.py",
+          "line": 628,
+          "end_line": 666
+        },
+        {
+          "path": "src/harness/run.py",
+          "line": 564,
+          "end_line": 625
+        }
+      ]
+    },
+    {
+      "id": "user",
+      "type": "external",
+      "label": "사용자 CLI",
+      "sublabel": "harness.run <폴더>",
+      "pos": [
+        40,
+        370
+      ],
+      "size": [
+        150,
+        56
+      ],
+      "sources": [
+        {
+          "path": "src/harness/run.py",
+          "line": 134,
+          "end_line": 141
+        },
+        {
+          "path": "src/harness/run.py",
+          "line": 669,
+          "end_line": 673
+        }
+      ]
+    },
+    {
+      "id": "slim",
+      "type": "backend",
+      "label": "slim.py",
+      "sublabel": "문서 정리",
+      "pos": [
+        290,
+        200
+      ],
+      "size": [
+        150,
+        70
+      ],
+      "sources": [
+        {
+          "path": "src/harness/slim.py",
+          "line": 107,
+          "end_line": 109
+        },
+        {
+          "path": "src/harness/run.py",
+          "line": 569,
+          "end_line": 572
+        }
+      ]
+    },
+    {
+      "id": "planner",
+      "type": "backend",
+      "label": "Planner",
+      "sublabel": "claude -p · Opus",
+      "pos": [
+        540,
+        200
+      ],
+      "size": [
+        150,
+        70
+      ],
+      "sources": [
+        {
+          "path": "src/harness/run.py",
+          "line": 573,
+          "end_line": 582
+        },
+        {
+          "path": "src/harness/run.py",
+          "line": 234,
+          "end_line": 244
+        },
+        {
+          "path": "src/harness/prompts/planner.md",
+          "line": 1,
+          "end_line": 3
+        }
+      ]
+    },
+    {
+      "id": "generator",
+      "type": "backend",
+      "label": "Generator",
+      "sublabel": "claude -p · Sonnet",
+      "pos": [
+        790,
+        200
+      ],
+      "size": [
+        150,
+        70
+      ],
+      "sources": [
+        {
+          "path": "src/harness/run.py",
+          "line": 597,
+          "end_line": 606
+        },
+        {
+          "path": "src/harness/run.py",
+          "line": 58,
+          "end_line": 59
+        },
+        {
+          "path": "src/harness/prompts/generator.md",
+          "line": 1,
+          "end_line": 3
+        }
+      ]
+    },
+    {
+      "id": "checks",
+      "type": "security",
+      "label": "외부 검증",
+      "sublabel": "pytest·ruff / npm",
+      "pos": [
+        1040,
+        200
+      ],
+      "size": [
+        150,
+        70
+      ],
+      "sources": [
+        {
+          "path": "src/harness/run.py",
+          "line": 412,
+          "end_line": 442
+        },
+        {
+          "path": "src/harness/run.py",
+          "line": 607,
+          "end_line": 607
+        }
+      ]
+    },
+    {
+      "id": "docs",
+      "type": "database",
+      "label": "프로젝트 docs/ 와 코드",
+      "sublabel": "PRD · PLAN · TASKS · REVIEW · IMPL · JOURNAL · archive/",
+      "pos": [
+        290,
+        370
+      ],
+      "size": [
+        650,
+        60
+      ],
+      "sources": [
+        {
+          "path": "src/harness/run.py",
+          "line": 564,
+          "end_line": 625
+        },
+        {
+          "path": "src/harness/slim.py",
+          "line": 53,
+          "end_line": 109
+        },
+        {
+          "path": "src/harness/prompts/common.md",
+          "line": 1,
+          "end_line": 28
+        }
+      ]
+    },
+    {
+      "id": "evaluator",
+      "type": "external",
+      "label": "Evaluator",
+      "sublabel": "codex exec · gpt-6.1-sol",
+      "pos": [
+        790,
+        540
+      ],
+      "size": [
+        150,
+        70
+      ],
+      "sources": [
+        {
+          "path": "src/harness/run.py",
+          "line": 258,
+          "end_line": 270
+        },
+        {
+          "path": "src/harness/run.py",
+          "line": 612,
+          "end_line": 617
+        },
+        {
+          "path": "src/harness/agents.toml",
+          "line": 26,
+          "end_line": 29
+        }
+      ]
+    },
+    {
+      "id": "gates",
+      "type": "security",
+      "label": "게이트·가드",
+      "sublabel": "docs 밖 변경 · 리뷰 게이트",
+      "pos": [
+        540,
+        540
+      ],
+      "size": [
+        150,
+        70
+      ],
+      "sources": [
+        {
+          "path": "src/harness/run.py",
+          "line": 385,
+          "end_line": 396
+        },
+        {
+          "path": "src/harness/run.py",
+          "line": 446,
+          "end_line": 464
+        },
+        {
+          "path": "src/harness/run.py",
+          "line": 618,
+          "end_line": 618
+        }
+      ]
+    },
+    {
+      "id": "usage",
+      "type": "external",
+      "label": "사용량 캐시",
+      "sublabel": "VS Code status cache",
+      "pos": [
+        290,
+        540
+      ],
+      "size": [
+        150,
+        70
+      ],
+      "sources": [
+        {
+          "path": "src/harness/run.py",
+          "line": 43,
+          "end_line": 43
+        },
+        {
+          "path": "src/harness/run.py",
+          "line": 155,
+          "end_line": 170
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "cfg-to-orch",
+      "from": "cfg",
+      "to": "orch",
+      "label": "모델·effort",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "user-to-orch",
+      "from": "user",
+      "to": "orch",
+      "label": "CLI 실행",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "orch-to-slim",
+      "from": "orch",
+      "to": "slim",
+      "label": "사이클 시작",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "slim-to-planner",
+      "from": "slim",
+      "to": "planner",
+      "label": "정리 후",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "planner-to-generator",
+      "from": "planner",
+      "to": "generator",
+      "label": "▶ 선정 후",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "generator-to-checks",
+      "from": "generator",
+      "to": "checks",
+      "label": "코드 변경",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "checks-to-evaluator",
+      "from": "checks",
+      "to": "evaluator",
+      "label": "CHECKS.md",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "right"
+    },
+    {
+      "id": "evaluator-to-gates",
+      "from": "evaluator",
+      "to": "gates",
+      "label": "REVIEW.md",
+      "variant": "emphasis",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "usage-to-gates",
+      "from": "usage",
+      "to": "gates",
+      "label": "사용량",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "slim-to-docs",
+      "from": "slim",
+      "to": "docs",
+      "label": "archive 이동",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "planner-to-docs",
+      "from": "planner",
+      "to": "docs",
+      "label": "PLAN·TASKS",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "generator-to-docs",
+      "from": "generator",
+      "to": "docs",
+      "label": "코드·IMPL",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "evaluator-to-docs",
+      "from": "evaluator",
+      "to": "docs",
+      "label": "REVIEW",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "한 사이클",
+      "items": [
+        "slim.py가 지난 상세를 archive로 옮긴 뒤 Planner, Generator를 차례로 부른다",
+        "외부 검증 후 Evaluator(Codex)가 REVIEW.md를 쓰면 게이트가 판정한다",
+        "직전이 FAIL이면 Planner를 생략하고 같은 TASK를 다시 연다"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "토큰 절감",
+      "items": [
+        "claude 호출은 --tools 등으로 환경을 격리해 고정 입력을 줄인다",
+        "호출마다 토큰·비용을 runs.jsonl에 기록하고 harness.report로 합산한다"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "안전장치",
+      "items": [
+        "Planner·Evaluator가 docs/ 밖을 바꾸면 사이클을 중단한다",
+        "외부 검증이 실패하면 PASS를 FAIL로 정정한다",
+        "사용량 거부 상태에서는 새 사이클을 시작하지 않는다"
+      ]
+    }
+  ]
+}
