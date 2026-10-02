@@ -7,7 +7,7 @@ import pytest
 
 def run(*args):
     return subprocess.run(["uv", "run", "rpn", *args], cwd=os.environ["PROJECT_DIR"],
-                          capture_output=True, text=True, timeout=300)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
 
 
 @pytest.mark.parametrize("expr, out", [("3 4 + 2 *", "14"), ("10 4 /", "2.5"), ("8 2 /", "4"), ("5 1 2 + 4 * + 3 -", "14")])

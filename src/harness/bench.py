@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -52,8 +53,10 @@ def judge(case: Path, project: Path) -> bool:
 
 
 def run_case(case: Path, max_iterations: int) -> dict:
-    project = Path(tempfile.mkdtemp(prefix=f"bench-{case.name}-"))
-    (project / "docs").mkdir()
+    # mkdtemp는 Windows(Python 3.13+)에서 폴더 권한을 만든 계정 전용으로 좁혀서, Codex 샌드박스가 쓴 파일(REVIEW.md)을
+    # 이 계정이 못 읽는다(실측). 일반 mkdir로 만든 폴더는 정상이므로 이름만 임의로 만들고 mkdir을 쓴다.
+    project = Path(tempfile.gettempdir()) / f"bench-{case.name}-{uuid.uuid4().hex[:8]}"
+    (project / "docs").mkdir(parents=True)
     shutil.copy(case / "PRD.md", project / "docs" / "PRD.md")
     env = {**os.environ, "MAX_ITERATIONS": str(max_iterations)}
     subprocess.run([sys.executable, "-m", "harness.run", str(project)], env=env)

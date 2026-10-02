@@ -5,7 +5,7 @@ import subprocess
 
 def run(*args):
     return subprocess.run(["uv", "run", "slugify", *args], cwd=os.environ["PROJECT_DIR"],
-                          capture_output=True, text=True, timeout=300)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
 
 
 def test_basic():
